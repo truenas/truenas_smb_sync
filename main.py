@@ -1,0 +1,121 @@
+import json
+import os
+import signal
+import sys
+import time
+import truenas_api_client
+
+from truenas_api_client import Client
+
+
+# Flag to control the loop
+running = True
+
+
+# Get our list of HOSTS and KEYS combos
+hosts = os.environ.get('SYNCHOSTS', '')
+
+host_list = hosts.split('|')
+
+def signal_handler(signum, frame):
+  global running
+  print(f"Received {'SIGINT' if signum == signal.SIGINT else 'SIGTERM'}, exiting gracefully...")
+  running = False
+  sys.exit(1)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+def start_sync():
+    """
+    Begins the Sync Process
+
+    Starts by connecting to each of the TrueNAS systems and fetching a list
+    of all SMB shares. 
+
+    """
+  
+    local_shares = []
+
+
+    for host_combo in host_list:
+        host_data = host_combo.split("#")
+        if len(host_data) < 1:
+            print(f"Invalid host#apikey combination")
+            sys.exit(1)
+        smb_list = get_smb_shares(host_data[0], host_data[1])
+        for item in smb_list:
+            smbid = item['id']
+            smbpath = item['path']
+            smbenabled = item['enabled']
+            if not smbenabled:
+                continue
+
+            if "EXTERNAL:" in smbpath:
+                continue
+
+            active_share = '{"host": "' + host_data[0] + '", "smbpath": "' + smbpath + '" }'
+            local_shares.append(active_share)
+            print(f"SMBID: {smbid}, PATH: {smbpath}")
+
+        print(local_shares)
+
+        #if isinstance(rv, (int, str)):
+        #   print(rv)
+        #else:
+        #print(json.dumps(rv))
+    
+
+def get_smb_shares(host, api_key):
+    """
+    Return a JSON list of all SMB shares on a target TrueNAS system
+    
+    Args:
+    host (str): Hostname (or IP) of the TrueNAS system
+    api_key (str): API Key of the TrueNAS system
+    """
+    command = "sharing.smb.query"
+
+    print("Fetching SMB share list from TrueNAS: " + host)
+
+    try:
+        with Client("ws://" + host + "/websocket") as c:
+            try:
+                if not c.call('auth.login_with_api_key', api_key):
+                    raise ValueError('Invalid API key')
+            except Exception as e:
+                print("Failed to login: ", e)
+                sys.exit(0)
+            try:
+                kwargs = {}
+
+                rv = c.call(command, *list(), **kwargs)
+                return rv
+            except ClientException as e:
+                if e.error:
+                    print(e.error, file=sys.stderr)
+                if e.trace:
+                    print(e.trace['formatted'], file=sys.stderr)
+                if e.extra:
+                    pprint.pprint(e.extra, stream=sys.stderr)
+                sys.exit(1)
+    except (FileNotFoundError, ConnectionRefusedError):
+        print('Failed to run middleware call. Daemon not running?', file=sys.stderr)
+        sys.exit(1)
+
+def main():
+
+
+    try:
+      while running:
+          print("Running... Press Ctrl+C to stop.")
+          start_sync()
+          time.sleep(10)
+    except KeyboardInterrupt:
+          print("Caught KeyboardInterrupt.")
+
+
+if __name__ == '__main__':
+    main()
