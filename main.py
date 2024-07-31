@@ -35,9 +35,12 @@ def start_sync():
     Starts by connecting to each of the TrueNAS systems and fetching a list
     of all SMB shares. 
 
+    This list will be filtered and sorted by local and EXTERNAL.
+
     """
   
     local_shares = []
+    external_shares = []
 
 
     for host_combo in host_list:
@@ -45,6 +48,7 @@ def start_sync():
         if len(host_data) < 1:
             print(f"Invalid host#apikey combination")
             sys.exit(1)
+
         smb_list = get_smb_shares(host_data[0], host_data[1])
         for item in smb_list:
             smbid = item['id']
@@ -53,20 +57,53 @@ def start_sync():
             if not smbenabled:
                 continue
 
+            # Split our list into the local and EXTERNAL shares on the host
             if "EXTERNAL:" in smbpath:
-                continue
+                external_smb = '{"host": "' + host_data[0] + '", "apikey": "' + host_data[1] + '", "smbpath": "' + smbpath + '" }'
+                external_shares.append(external_smb)
+            else:
+                local_smb = '{"host": "' + host_data[0] + '", "apikey": "' + host_data[1] + '", "smbpath": "' + smbpath + '" }'
+                local_shares.append(local_smb)
 
-            active_share = '{"host": "' + host_data[0] + '", "smbpath": "' + smbpath + '" }'
-            local_shares.append(active_share)
-            print(f"SMBID: {smbid}, PATH: {smbpath}")
+        # Create the external smb share links now
+        create_external_smb(local_shares, external_shares)
 
-        print(local_shares)
+        # Prune any external links that point nowhere
+        prune_external_smb(local_shares, external_shares)
 
         #if isinstance(rv, (int, str)):
         #   print(rv)
         #else:
         #print(json.dumps(rv))
-    
+
+def create_external_smb(local_shares, external_shares):
+    """
+    Read through our list of external shares and create any new external share links
+
+    Args:
+    local_shares (list): List of all local smb shares
+    external_shares (list): List of all local smb shares
+
+    """
+    print("Local Shares:")
+    print(local_shares)
+    print("External Shares:")
+    print(external_shares)
+
+def prune_external_smb(local_shares, external_shares):
+    """
+    Read through our list of external shares and prune any that point nowhere
+
+    Args:
+    local_shares (list): List of all local smb shares
+    external_shares (list): List of all local smb shares
+
+    """
+    print("Local Shares:")
+    print(local_shares)
+    print("External Shares:")
+    print(external_shares)
+
 
 def get_smb_shares(host, api_key):
     """
