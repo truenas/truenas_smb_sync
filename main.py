@@ -1,11 +1,11 @@
-import json
 import os
+import pprint
 import signal
 import sys
 import time
-import truenas_api_client
 
 from truenas_api_client import Client
+from truenas_api_client import ClientException
 
 
 # Flag to control the loop
@@ -17,53 +17,81 @@ hosts = os.environ.get('SYNCHOSTS', '')
 
 host_list = hosts.split('|')
 
+
 def signal_handler(signum, frame):
-  global running
-  print(f"Received {'SIGINT' if signum == signal.SIGINT else 'SIGTERM'}, exiting gracefully...")
-  running = False
-  sys.exit(1)
+    global running
+    print(f"Received {'SIGINT' if signum == signal.SIGINT else 'SIGTERM'},"
+          "exiting gracefully...")
+    running = False
+    sys.exit(1)
 
 
 # Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
+
 def start_sync():
     """
     Begins the Sync Process
 
     Starts by connecting to each of the TrueNAS systems and fetching a list
-    of all SMB shares. 
+    of all SMB shares.
 
     This list will be filtered and sorted by local and EXTERNAL.
 
     """
-  
+
     local_shares = []
     external_shares = []
-
 
     for host_combo in host_list:
         host_data = host_combo.split("#")
         if len(host_data) < 1:
-            print(f"Invalid host#apikey combination")
+            print("Invalid host#apikey combination")
             sys.exit(1)
 
         smb_list = get_smb_shares(host_data[0], host_data[1])
         for item in smb_list:
-            smbid = item['id']
+            smbexternal = False
+            add_local = True
+            # smbid = item['id']
+            smbname = item['name']
             smbpath = item['path']
             smbenabled = item['enabled']
             if not smbenabled:
                 continue
 
-            # Split our list into the local and EXTERNAL shares on the host
+            # Is this an external share?
             if "EXTERNAL:" in smbpath:
-                external_smb = '{"host": "' + host_data[0] + '", "apikey": "' + host_data[1] + '", "smbpath": "' + smbpath + '" }'
+                smbexternal = True
+
+            # Confirm we don't have a name conflict
+            namekey = 'name'
+            if not smbexternal:
+                for litem in local_shares:
+                    if litem.get(namekey) == smbname:
+                        print("WARNING: The following systems have the " +
+                              "same SMB Name defined.")
+                        print("------------------------------------")
+                        print('Host: ' + host_data[0] + 'Share:' + smbname)
+                        print('Host: ' + litem.get("host") +
+                              'Share:' + smbname)
+                        print("------------------------------------")
+                        print("External Links for this share will not " +
+                              "be created until this conflict is resolved.")
+                        add_local = False
+
+            # Split our list into the local and EXTERNAL shares on the host
+            if smbexternal:
+                external_smb = {'name': smbname, 'host': host_data[0],
+                                'apikey': host_data[1], 'smbpath': smbpath}
                 external_shares.append(external_smb)
             else:
-                local_smb = '{"host": "' + host_data[0] + '", "apikey": "' + host_data[1] + '", "smbpath": "' + smbpath + '" }'
-                local_shares.append(local_smb)
+                if add_local:
+                    local_smb = {'name': smbname, 'host': host_data[0],
+                                 'apikey': host_data[1], 'smbpath': smbpath}
+                    local_shares.append(local_smb)
 
         # Create the external smb share links now
         create_external_smb(local_shares, external_shares)
@@ -71,14 +99,16 @@ def start_sync():
         # Prune any external links that point nowhere
         prune_external_smb(local_shares, external_shares)
 
-        #if isinstance(rv, (int, str)):
+        # if isinstance(rv, (int, str)):
         #   print(rv)
-        #else:
-        #print(json.dumps(rv))
+        # else:
+        # print(json.dumps(rv))
+
 
 def create_external_smb(local_shares, external_shares):
     """
-    Read through our list of external shares and create any new external share links
+    Read through our list of external shares and create any
+    new external share links
 
     Args:
     local_shares (list): List of all local smb shares
@@ -89,6 +119,7 @@ def create_external_smb(local_shares, external_shares):
     print(local_shares)
     print("External Shares:")
     print(external_shares)
+
 
 def prune_external_smb(local_shares, external_shares):
     """
@@ -108,7 +139,7 @@ def prune_external_smb(local_shares, external_shares):
 def get_smb_shares(host, api_key):
     """
     Return a JSON list of all SMB shares on a target TrueNAS system
-    
+
     Args:
     host (str): Hostname (or IP) of the TrueNAS system
     api_key (str): API Key of the TrueNAS system
@@ -139,19 +170,20 @@ def get_smb_shares(host, api_key):
                     pprint.pprint(e.extra, stream=sys.stderr)
                 sys.exit(1)
     except (FileNotFoundError, ConnectionRefusedError):
-        print('Failed to run middleware call. Daemon not running?', file=sys.stderr)
+        print('Failed to run middleware call. Daemon not running?',
+              file=sys.stderr)
         sys.exit(1)
+
 
 def main():
 
-
     try:
-      while running:
-          print("Running... Press Ctrl+C to stop.")
-          start_sync()
-          time.sleep(10)
+        while running:
+            print("Running... Press Ctrl+C to stop.")
+            start_sync()
+            time.sleep(10)
     except KeyboardInterrupt:
-          print("Caught KeyboardInterrupt.")
+        print("Caught KeyboardInterrupt.")
 
 
 if __name__ == '__main__':
