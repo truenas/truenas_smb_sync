@@ -159,6 +159,24 @@ def parse_external_smb(local_shares, external_shares):
     external_shares (list): List of all local smb shares
 
     """
+
+    # Loop through all the external shares, prune the dead where necessary
+    for eshare in external_shares:
+
+        prune_share = True
+
+        # Check local shares for a matching name
+        # We don't check path matches here, that is done in parse_local_smb()
+        for lshare in local_shares:
+            if eshare.get("name") == lshare.get("name"):
+                prune_share = False
+                break
+
+        if prune_share:
+            remove_smb_share(eshare.get("host"),
+                             eshare.get("apikey"),
+                             eshare.get("smbid"))
+
     # print("Local Shares:")
     # print(local_shares)
     # print("External Shares:")
@@ -223,11 +241,8 @@ def remove_smb_share(host, apikey, smbid):
     """
     command = "sharing.smb.delete"
 
-    print("Deleting external share: " + host + " ShareID: " + smbid)
-    dellist = {'id': smbid}
-
-    print(dellist)
-    return
+    print("Deleting orphaned external share: " + host + " ShareID: " +
+          str(smbid))
 
     try:
         with Client("ws://" + host + "/websocket") as c:
@@ -240,7 +255,7 @@ def remove_smb_share(host, apikey, smbid):
             try:
                 kwargs = {}
 
-                rv = c.call(command, dellist, **kwargs)
+                rv = c.call(command, smbid, **kwargs)
                 # TODO - Add some error handling
                 print(rv)
                 return
