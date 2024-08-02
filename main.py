@@ -73,6 +73,7 @@ def start_sync():
                         print("------------------------------------")
                         print("External Links for this share will not " +
                               "be synced until this conflict is resolved.")
+                        litem.update({'conflict': True})
                         add_local = False
 
             # Populate our lists into the local and EXTERNAL shares on the host
@@ -86,7 +87,7 @@ def start_sync():
                 if add_local:
                     local_smb = {'name': smbname, 'host': host.get("host"),
                                  'apikey': host.get("apikey"),
-                                 'smbpath': smbpath}
+                                 'smbpath': smbpath, 'conflict': False}
                     local_shares.append(local_smb)
 
     # Create the external smb share links now
@@ -121,6 +122,11 @@ def parse_local_smb(local_shares, external_shares):
 
             # Skip the same host
             if lshare.get("host") == host.get("host"):
+                continue
+
+            # Skip any shares that are in conflict
+            # I.E. Two shares with same name existing
+            if lshare.get("conflict"):
                 continue
 
             # Check if this host has an external share already pointing back
