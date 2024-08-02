@@ -333,13 +333,22 @@ def get_smb_shares(host, api_key):
 def main():
 
     # Create the parser
-    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser = argparse.ArgumentParser(description="Process TrueNAS Hosts")
     parser.add_argument('--host', action='append', type=str,
                         help='TrueNAS host to sync in format <host>#<apikey>')
     args = parser.parse_args()
 
+    # Show usage if no arguments provided
+    if len(sys.argv) == 1:
+        parser.print_usage()
+        sys.exit(1)
+
     # Read our provided hosts and bail if none
     if args.host:
+        if len(args.host) < 2:
+            print("Requires a minimum of two TrueNAS hosts to operate.")
+            sys.exit(1)
+
         for host in args.host:
             host_data = host.split("#")
             if len(host_data) < 1:
@@ -351,6 +360,7 @@ def main():
         print("Missing hosts to monitor, use -h for syntax.")
         sys.exit(1)
 
+    # We have good hosts to run with, start the main loop until SIGTERM
     try:
         while True:
             print("Starting SMB Share Monitoring... Press Ctrl+C to stop.")
