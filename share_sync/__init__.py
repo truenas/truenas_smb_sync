@@ -107,11 +107,6 @@ def start_sync():
     # Prune any external links that point nowhere
     parse_external_smb(local_shares, external_shares)
 
-    # if isinstance(rv, (int, str)):
-    #   print(rv)
-    # else:
-    # print(json.dumps(rv))
-
 
 def parse_local_smb(local_shares, external_shares):
     """
@@ -161,10 +156,11 @@ def parse_local_smb(local_shares, external_shares):
                 create_external_share(host.get("host"), host.get("apikey"),
                                       lshare.get("host"), lshare.get("name"))
 
-    # print("Local Shares:")
-    # print(local_shares)
-    # print("External Shares:")
-    # print(external_shares)
+    if debug_mode:
+        print("Local Shares:")
+        print(local_shares)
+        print("External Shares:")
+        print(external_shares)
 
 
 def parse_external_smb(local_shares, external_shares):
@@ -309,8 +305,7 @@ def get_smb_shares(host, api_key):
                 if not c.call('auth.login_with_api_key', api_key):
                     raise ValueError('Invalid API key')
             except Exception as e:
-                print("Failed to login: ", e)
-                sys.exit(0)
+                print("WARNING: Failed to login: ", e)
             try:
                 kwargs = {}
 
