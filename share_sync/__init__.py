@@ -1,6 +1,5 @@
 import argparse
 import os
-import pprint
 import signal
 import sys
 import time
@@ -11,6 +10,9 @@ from truenas_api_client import ClientException
 
 # Global Host List
 host_list = []
+
+# Accept WSS Self Signed?
+wss_insecure = False
 
 # Debug Mode?
 debug_mode = False
@@ -215,33 +217,7 @@ def create_external_share(host, apikey, smbhost, smbname):
     createlist = {'path': "EXTERNAL:" + sharepath,
                   'comment': "Auto-Created SMB Redirect", 'name': smbname}
 
-    try:
-        with Client("ws://" + host + "/websocket") as c:
-            try:
-                if not c.call('auth.login_with_api_key', apikey):
-                    raise ValueError('Invalid API key')
-            except Exception as e:
-                print("Failed to login: ", e)
-                return
-            try:
-                kwargs = {}
-
-                rv = c.call(command, createlist, **kwargs)
-                if debug_mode:
-                    print(rv)
-                return
-            except ClientException as e:
-                if e.error:
-                    print(e.error, file=sys.stderr)
-                if e.trace:
-                    print(e.trace['formatted'], file=sys.stderr)
-                if e.extra:
-                    pprint.pprint(e.extra, stream=sys.stderr)
-                return
-    except (FileNotFoundError, ConnectionRefusedError):
-        print('Failed to run middleware call. Daemon not running?',
-              file=sys.stderr)
-        return
+    api_call(host, apikey, command, createlist, False)
 
 
 def remove_smb_share(host, apikey, smbid):
@@ -258,71 +234,69 @@ def remove_smb_share(host, apikey, smbid):
     print("Deleting orphaned external share: " + host + " ShareID: " +
           str(smbid))
 
-    try:
-        with Client("ws://" + host + "/websocket") as c:
-            try:
-                if not c.call('auth.login_with_api_key', apikey):
-                    raise ValueError('Invalid API key')
-            except Exception as e:
-                print("Failed to login: ", e)
-                return
-            try:
-                kwargs = {}
-
-                rv = c.call(command, smbid, **kwargs)
-                if debug_mode:
-                    print(rv)
-                return
-            except ClientException as e:
-                if e.error:
-                    print(e.error, file=sys.stderr)
-                if e.trace:
-                    print(e.trace['formatted'], file=sys.stderr)
-                if e.extra:
-                    pprint.pprint(e.extra, stream=sys.stderr)
-                return
-    except (FileNotFoundError, ConnectionRefusedError):
-        print('Failed to run middleware call. Daemon not running?',
-              file=sys.stderr)
-        return
+    api_call(host, apikey, command, smbid, False)
 
 
-def get_smb_shares(host, api_key):
+def api_call(host, apikey, command, args, wssmode):
     """
-    Return a JSON list of all SMB shares on a target TrueNAS system
+    Run an API call against the specified TrueNAS
 
     Args:
     host (str): Hostname (or IP) of the TrueNAS system
-    api_key (str): API Key of the TrueNAS system
+    apikey (str): API Key of the TrueNAS system
+    command (str): API command to call
+    args: API arguments
+    wssmode (bool): Optional
     """
-    command = "sharing.smb.query"
 
-    print("Fetching SMB share list from TrueNAS: " + host)
+    # Are we in ws:// or wss:// mode
+    wssprefix = "ws://"
+    if wssmode:
+        wssprefix = "wss://"
 
     try:
-        with Client("ws://" + host + "/websocket") as c:
+        with Client(wssprefix + host + "/websocket", False,
+                    False, False, 60, wss_insecure) as c:
             try:
-                if not c.call('auth.login_with_api_key', api_key):
+                if not c.call('auth.login_with_api_key', apikey):
                     raise ValueError('Invalid API key')
             except Exception as e:
                 print("WARNING: Failed to login: ", e)
             try:
                 kwargs = {}
 
-                rv = c.call(command, *list(), **kwargs)
+                rv = c.call(command, args, **kwargs)
                 return rv
             except ClientException as e:
-                if e.error:
-                    print(e.error, file=sys.stderr)
-                if e.trace:
-                    print(e.trace['formatted'], file=sys.stderr)
-                if e.extra:
-                    pprint.pprint(e.extra, stream=sys.stderr)
-                sys.exit(1)
+                if wssprefix == "ws://":
+                    rtn = api_call(host, apikey, command,
+                                   args, True)
+                    return rtn
+                else:
+                    print("WARNING: Failed to connect to: " + host)
+                    if e.error:
+                        print(e.error, file=sys.stderr)
+
     except (FileNotFoundError, ConnectionRefusedError):
-        print('Failed to run middleware call. Daemon not running?',
-              file=sys.stderr)
-        sys.exit(1)
+        if wssprefix == "ws://":
+            return api_call(host, apikey, command, args, True)
+        else:
+            print("WARNING: Failed to connect to: " + host)
+
+
+def get_smb_shares(host, apikey):
+    """
+    Return a JSON list of all SMB shares on a target TrueNAS system
+
+    Args:
+    host (str): Hostname (or IP) of the TrueNAS system
+    apikey (str): API Key of the TrueNAS system
+    """
+    command = "sharing.smb.query"
+
+    print("Fetching SMB share list from TrueNAS: " + host)
+
+    return api_call(host, apikey, command, list(), False)
 
 
 def main():
@@ -331,12 +305,18 @@ def main():
     parser = argparse.ArgumentParser(description="Process TrueNAS Hosts")
     parser.add_argument('--host', action='append', type=str,
                         help='TrueNAS host to sync in format <host>#<apikey>')
+    parser.add_argument('--wssinsecure', type=bool, default=False,
+                        help='Auto accept HTTPS certificates over wss://')
     args = parser.parse_args()
 
     # Show usage if no arguments provided
     if len(sys.argv) == 1:
         parser.print_usage()
         sys.exit(1)
+
+    # Auto accept self-signed wss:// connections?
+    if args.wssinsecure:
+        wss_insecure = True
 
     # Read our provided hosts and bail if none
     if args.host:
@@ -354,6 +334,9 @@ def main():
     else:
         print("Missing hosts to monitor, use -h for syntax.")
         sys.exit(1)
+
+    if wss_insecure:
+        print("Warning: Running with WSS Insecure Mode")
 
     # We have good hosts to run with, start the main loop until SIGTERM
     try:
