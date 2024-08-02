@@ -8,18 +8,19 @@ from truenas_api_client import Client
 from truenas_api_client import ClientException
 
 
-# Flag to control the loop
-running = True
-
 # Global Host List
 host_list = []
+
+# Debug Mode?
+debug_mode = False
+if os.environ.get('DEBUG', ''):
+    debug_mode = True
 
 
 def signal_handler(signum, frame):
     global running
     print(f"Received {'SIGINT' if signum == signal.SIGINT else 'SIGTERM'},"
           "exiting gracefully...")
-    running = False
     sys.exit(1)
 
 
@@ -202,8 +203,9 @@ def create_external_share(host, apikey, smbhost, smbname):
     command = "sharing.smb.create"
 
     sharepath = smbhost + '\\' + smbname
-    print("Creating EXTERNAL share: " + host + "\\" + smbname
-          + " ====> " + sharepath)
+
+    print("Creating share: " + host + "\\" + smbname
+          + " redirect to ==> " + sharepath)
     createlist = {'path': "EXTERNAL:" + sharepath,
                   'comment': "Auto-Created SMB Redirect", 'name': smbname}
 
@@ -219,8 +221,8 @@ def create_external_share(host, apikey, smbhost, smbname):
                 kwargs = {}
 
                 rv = c.call(command, createlist, **kwargs)
-                # TODO - Add some error handling
-                print(rv)
+                if debug_mode:
+                    print(rv)
                 return
             except ClientException as e:
                 if e.error:
@@ -262,8 +264,8 @@ def remove_smb_share(host, apikey, smbid):
                 kwargs = {}
 
                 rv = c.call(command, smbid, **kwargs)
-                # TODO - Add some error handling
-                print(rv)
+                if debug_mode:
+                    print(rv)
                 return
             except ClientException as e:
                 if e.error:
@@ -323,6 +325,7 @@ def setup_hosts():
     Read through environment variable of hosts, parse
     and add to our list / dict
     """
+
     # Get our list of HOSTS and KEYS combos
     hosts = os.environ.get('SYNCHOSTS', '')
     host_raw = hosts.split('|')
@@ -342,7 +345,7 @@ def main():
     setup_hosts()
 
     try:
-        while running:
+        while True:
             print("Running... Press Ctrl+C to stop.")
             start_sync()
             time.sleep(60 * 5)
