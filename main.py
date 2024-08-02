@@ -1,3 +1,4 @@
+import argparse
 import os
 import pprint
 import signal
@@ -329,29 +330,26 @@ def get_smb_shares(host, api_key):
         sys.exit(1)
 
 
-def setup_hosts():
-    """
-    Read through environment variable of hosts, parse
-    and add to our list / dict
-    """
-
-    # Get our list of HOSTS and KEYS combos
-    hosts = os.environ.get('SYNCHOSTS', '')
-    host_raw = hosts.split('|')
-
-    for host_combo in host_raw:
-        host_data = host_combo.split("#")
-        if len(host_data) < 1:
-            print("Invalid host#apikey combination")
-            sys.exit(1)
-        hostadd = {'host': host_data[0], 'apikey': host_data[1]}
-        host_list.append(hostadd)
-
-
 def main():
 
-    # Load the supplied list of hosts
-    setup_hosts()
+    # Create the parser
+    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser.add_argument('--host', action='append', type=str,
+                        help='TrueNAS host to sync in format <host>#<apikey>')
+    args = parser.parse_args()
+
+    # Read our provided hosts and bail if none
+    if args.host:
+        for host in args.host:
+            host_data = host.split("#")
+            if len(host_data) < 1:
+                print("Invalid <host>#<apikey> combination")
+                sys.exit(1)
+            hostadd = {'host': host_data[0], 'apikey': host_data[1]}
+            host_list.append(hostadd)
+    else:
+        print("Missing hosts to monitor, use -h for syntax.")
+        sys.exit(1)
 
     try:
         while True:
