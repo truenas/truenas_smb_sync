@@ -16,6 +16,15 @@ debug_mode = False
 if os.environ.get('DEBUG', ''):
     debug_mode = True
 
+# Set default polling interval
+poll_minutes = 5
+user_poll = os.environ.get('POLLMINUTES')
+if user_poll is not None:
+    try:
+        poll_minutes = int(user_poll)
+    except ValueError:
+        print("WARNING: Invalid POLLMINUTES, should be int. Using Default")
+
 
 def signal_handler(signum, frame):
     global running
@@ -346,9 +355,9 @@ def main():
 
     try:
         while True:
-            print("Running... Press Ctrl+C to stop.")
+            print("Starting SMB Share Monitoring... Press Ctrl+C to stop.")
             start_sync()
-            time.sleep(60 * 5)
+            time.sleep(poll_minutes * 60)
     except KeyboardInterrupt:
         print("Caught KeyboardInterrupt.")
 
