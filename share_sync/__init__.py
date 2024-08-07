@@ -121,6 +121,8 @@ def parse_local_smb(local_shares, external_shares):
 
     """
 
+    global debug_mode
+
     # Loop through all the local shares, add external links where necessary
     for lshare in local_shares:
 
@@ -300,6 +302,8 @@ def get_smb_shares(host, apikey):
 
 
 def main():
+
+    global wss_insecure
 
     # Create the parser
     parser = argparse.ArgumentParser(description="Process TrueNAS Hosts")
