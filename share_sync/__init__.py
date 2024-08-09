@@ -251,6 +251,8 @@ def api_call(host, apikey, command, args, wssmode):
     wssmode (bool): Optional
     """
 
+    global debug_mode
+
     # Are we in ws:// or wss:// mode
     wssprefix = "ws://"
     if wssmode:
@@ -273,6 +275,8 @@ def api_call(host, apikey, command, args, wssmode):
                 if wssprefix == "ws://":
                     rtn = api_call(host, apikey, command,
                                    args, True)
+                    if debug_mode:
+                        print(rtn)
                     return rtn
                 else:
                     print("WARNING: Failed to connect to: " + host)
