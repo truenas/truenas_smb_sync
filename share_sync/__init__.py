@@ -278,12 +278,14 @@ def api_call(host, apikey, command, args, wssmode):
                     print("WARNING: Failed to connect to: " + host)
                     if e.error:
                         print(e.error, file=sys.stderr)
+                    return ""
 
     except (FileNotFoundError, ConnectionRefusedError):
         if wssprefix == "ws://":
             return api_call(host, apikey, command, args, True)
         else:
             print("WARNING: Failed to connect to: " + host)
+            return ""
 
 
 def get_smb_shares(host, apikey):
@@ -298,7 +300,12 @@ def get_smb_shares(host, apikey):
 
     print("Fetching SMB share list from TrueNAS: " + host)
 
-    return api_call(host, apikey, command, list(), False)
+    api_response = api_call(host, apikey, command, list(), False)
+    if api_response != "":
+        return api_response
+    else:
+        print("Invalid sharing.smb.query response from " + host)
+        return ""
 
 
 def main():
